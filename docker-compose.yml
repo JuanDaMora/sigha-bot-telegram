@@ -9,4 +9,9 @@ services:
     volumes:
       - ./bot/users.json:/app/users.json
     restart: unless-stopped
+    networks:
+      - sigha-preprod   # 👈 aquí lo unimos a la red del backend
 
+networks:
+  sigha-preprod:
+    external: true
