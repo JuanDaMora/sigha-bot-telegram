@@ -158,7 +158,6 @@ bot.command("areas", async (ctx) => {
       return ctx.reply("📭 No se encontraron áreas ni asignaturas.");
     }
 
-    // Agrupamos por área
     const grouped = {};
     res.rows.forEach((row) => {
       if (!grouped[row.area]) grouped[row.area] = [];
@@ -167,7 +166,6 @@ bot.command("areas", async (ctx) => {
       }
     });
 
-    // Construimos el mensaje
     let mensaje = "📚 Áreas y asignaturas:\n\n";
     Object.entries(grouped).forEach(([area, asignaturas]) => {
       mensaje += `🔹 ${area}\n`;
@@ -186,6 +184,106 @@ bot.command("areas", async (ctx) => {
   }
 });
 
+// ------------------ Consultar semestres y resumen de grupos ------------------ //
+bot.command("semestres", async (ctx) => {
+  if (!isAdmin(ctx)) return deny(ctx);
+
+  try {
+    const sql = `
+      SELECT s.id,
+             s.description,
+             COUNT(g.id) AS total_grupos,
+             COUNT(*) FILTER (WHERE g.id_user IS NOT NULL) AS con_docente,
+             COUNT(*) FILTER (WHERE g.id_user IS NULL) AS sin_docente
+      FROM sigha.semester s
+      LEFT JOIN sigha."group" g ON g.id_semester = s.id
+      GROUP BY s.id, s.description
+      ORDER BY s.start_date DESC;
+    `;
+    const res = await query(sql);
+
+    if (!res.rows.length) {
+      return ctx.reply("📭 No hay semestres registrados.");
+    }
+
+    let mensaje = "📅 Semestres:\n\n";
+    res.rows.forEach((s, i) => {
+      mensaje += `${i + 1}. ${s.description} → Total grupos: ${s.total_grupos} (✅ ${s.con_docente} con docente, ❌ ${s.sin_docente} sin docente)\n`;
+    });
+
+    return ctx.reply(mensaje);
+  } catch (e) {
+    console.error("/semestres error", e);
+    return ctx.reply(`❌ Error al consultar semestres: ${e.message}`);
+  }
+});
+
+// ------------------ Grupos sin docente (interactivo con botones) ------------------ //
+bot.command("grupos_sin_docente", async (ctx) => {
+  if (!isAdmin(ctx)) return deny(ctx);
+
+  try {
+    const sql = `
+      SELECT id, description
+      FROM sigha.semester
+      ORDER BY start_date DESC;
+    `;
+    const res = await query(sql);
+
+    if (!res.rows.length) {
+      return ctx.reply("📭 No hay semestres registrados.");
+    }
+
+    const buttons = res.rows.map((s) => [
+      { text: s.description, callback_data: `grupos_sin_docente:${s.id}:${s.description}` },
+    ]);
+
+    return ctx.reply("📅 Elige un semestre:", {
+      reply_markup: { inline_keyboard: buttons },
+    });
+  } catch (e) {
+    console.error("/grupos_sin_docente error", e);
+    return ctx.reply(`❌ Error al consultar semestres: ${e.message}`);
+  }
+});
+
+// ------------------ Callback para mostrar grupos sin docente ------------------ //
+bot.on("callback_query", async (ctx) => {
+  const data = ctx.callbackQuery.data;
+
+  if (data.startsWith("grupos_sin_docente:")) {
+    const [, idSemestre, description] = data.split(":");
+
+    try {
+      const sql = `
+        SELECT g.code,
+               s.name AS asignatura
+        FROM sigha."group" g
+        JOIN sigha.subject s ON s.id = g.id_subject
+        WHERE g.id_semester = $1
+          AND g.id_user IS NULL
+        ORDER BY g.code;
+      `;
+      const res = await query(sql, [idSemestre]);
+
+      if (!res.rows.length) {
+        await ctx.reply(`📭 No hay grupos sin docente en el semestre ${description}.`);
+      } else {
+        let mensaje = `📋 Grupos sin docente en semestre ${description}:\n\n`;
+        res.rows.forEach((g) => {
+          mensaje += `- ${g.code}: ${g.asignatura}\n`;
+        });
+        await ctx.reply(mensaje);
+      }
+    } catch (e) {
+      console.error("callback grupos_sin_docente error", e);
+      await ctx.reply(`❌ Error al consultar grupos: ${e.message}`);
+    }
+  }
+
+  ctx.answerCbQuery();
+});
+
 // ------------------ DB & Test ------------------ //
 bot.command("db", async (ctx) => {
   if (!isAdmin(ctx)) return deny(ctx);
@@ -194,14 +292,6 @@ bot.command("db", async (ctx) => {
   return ctx.reply("✅ DB OK");
 });
 
-bot.command("test", async (ctx) => {
-  if (!isCreator(ctx)) return deny(ctx);
-  const res = await query(
-    `SELECT documento FROM sigha."user" ORDER BY creation_date DESC LIMIT 10`
-  );
-  if (!res.rows.length) return ctx.reply("📭 Sin resultados.");
-  return ctx.reply(res.rows.map((r, i) => `${i + 1}. ${r.documento}`).join("\n"));
-});
 
 // ------------------ Menú comandos ------------------ //
 bot.telegram.setMyCommands([
@@ -214,12 +304,13 @@ bot.telegram.setMyCommands([
   { command: "listar", description: "Listar usuarios (Creador)" },
   { command: "usuario", description: "Consultar usuario por documento" },
   { command: "areas", description: "Listar áreas y sus asignaturas" },
+  { command: "semestres", description: "Listar semestres con resumen de grupos" },
+  { command: "grupos_sin_docente", description: "Listar grupos sin docente (elige semestre)" },
   { command: "db", description: "Probar conexión DB" },
-  { command: "test", description: "Últimos 10 documentos (Creador)" },
 ]);
 
 // ------------------ Inicio ------------------ //
 bot.catch((err) => console.error("Bot error:", err));
 bot.launch().then(() =>
-  console.log("✅ Bot SIGHA corriendo con comandos de gestión y áreas/asignaturas...")
+  console.log("✅ Bot SIGHA corriendo con gestión, áreas, semestres y grupos sin docente...")
 );
