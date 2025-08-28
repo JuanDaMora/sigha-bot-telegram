@@ -4,58 +4,26 @@ import { healthcheck, query } from "./db.js";
 
 const bot = new Telegraf(process.env.TELEGRAM_TOKEN);
 let data = loadUsers();
-const backendUrl = process.env.BACKEND_URL;
 
-// ------------------ Comandos por rol ------------------ //
-function getCommandsByRole(role) {
-  switch (role) {
-    case "creator":
-      return [
-        "/aprobar <id>",
-        "/bloquear <id>",
-        "/eliminar <id>",
-        "/promover <id>",
-        "/revocar <id>",
-        "/test",
-      ];
-    case "admin":
-      return ["(sin comandos disponibles todavía)"];
-    case "approved":
-      return ["(sin comandos disponibles todavía)"];
-    case "blocked":
-      return ["❌ Ninguno, estás bloqueado."];
-    case "pending":
-      return ["❌ Ninguno, espera aprobación."];
-    default:
-      return ["❌ No tienes permisos."];
-  }
+// ------------------ Helpers ------------------ //
+function isCreator(ctx) {
+  return ctx.from.id.toString() === data.creator.toString();
 }
-
-// ------------------ Middleware ------------------ //
-function checkAccess(ctx, next) {
+function isAdmin(ctx) {
   const id = ctx.from.id.toString();
-  const role =
-    id === data.creator.toString()
-      ? "creator"
-      : data.users[id]?.role || "pending";
-
-  if (role === "creator" || role === "admin" || role === "approved") {
-    return next();
-  }
-
-  return ctx.reply("❌ No tienes permisos para usar este bot.");
+  return isCreator(ctx) || data.users[id]?.role === "admin";
+}
+function deny(ctx) {
+  return ctx.reply("❌ No tienes permisos para usar este comando.");
 }
 
 // ------------------ /start ------------------ //
 bot.start((ctx) => {
   const id = ctx.from.id.toString();
 
-  if (id === data.creator.toString()) {
-    const commands = getCommandsByRole("creator").join("\n");
+  if (isCreator(ctx)) {
     return ctx.reply(
-      `👑 Bienvenido Creador.\nTu chat.id es: ${id}\n\nTu rol: ${getRoleName(
-        "creator"
-      )}\n\nComandos disponibles:\n${commands}`
+      `👑 Bienvenido Creador.\nTu chat.id es: ${id}\nRol: Creador`
     );
   }
 
@@ -64,11 +32,7 @@ bot.start((ctx) => {
     saveUsers(data);
 
     ctx.reply(
-      `👋 Hola! Tu chat.id es: ${id}\n\nTu rol actual: ${getRoleName(
-        "pending"
-      )}\nTu solicitud está pendiente de aprobación.\nContacta al Creador para que te apruebe.\n\nComandos disponibles:\n${getCommandsByRole(
-        "pending"
-      ).join("\n")}`
+      `👋 Hola! Tu chat.id es: ${id}\nRol actual: PENDIENTE.\nEspera aprobación del Creador.`
     );
 
     bot.telegram.sendMessage(
@@ -77,23 +41,19 @@ bot.start((ctx) => {
     );
   } else {
     const role = data.users[id].role;
-    const commands = getCommandsByRole(role).join("\n");
     ctx.reply(
-      `✅ Ya estás registrado.\nTu chat.id es: ${id}\nTu rol actual: ${getRoleName(
+      `✅ Ya estás registrado.\nTu chat.id es: ${id}\nRol actual: ${getRoleName(
         role
-      )}\n\nComandos disponibles:\n${commands}`
+      )}`
     );
   }
 });
 
-// ------------------ Comandos de gestión (solo Creador) ------------------ //
+// ------------------ Gestión de usuarios ------------------ //
 bot.command("aprobar", (ctx) => {
-  if (ctx.from.id.toString() !== data.creator.toString())
-    return ctx.reply("❌ Solo el Creador puede gestionar usuarios.");
-
+  if (!isCreator(ctx)) return deny(ctx);
   const id = ctx.message.text.split(" ")[1];
   if (!id) return ctx.reply("Uso: /aprobar <id>");
-
   data.users[id] = { role: "approved" };
   saveUsers(data);
   ctx.reply(`✅ Usuario ${id} aprobado.`);
@@ -101,12 +61,9 @@ bot.command("aprobar", (ctx) => {
 });
 
 bot.command("bloquear", (ctx) => {
-  if (ctx.from.id.toString() !== data.creator.toString())
-    return ctx.reply("❌ Solo el Creador puede gestionar usuarios.");
-
+  if (!isCreator(ctx)) return deny(ctx);
   const id = ctx.message.text.split(" ")[1];
   if (!id) return ctx.reply("Uso: /bloquear <id>");
-
   data.users[id] = { role: "blocked" };
   saveUsers(data);
   ctx.reply(`⛔ Usuario ${id} bloqueado.`);
@@ -114,24 +71,18 @@ bot.command("bloquear", (ctx) => {
 });
 
 bot.command("eliminar", (ctx) => {
-  if (ctx.from.id.toString() !== data.creator.toString())
-    return ctx.reply("❌ Solo el Creador puede gestionar usuarios.");
-
+  if (!isCreator(ctx)) return deny(ctx);
   const id = ctx.message.text.split(" ")[1];
   if (!id) return ctx.reply("Uso: /eliminar <id>");
-
   delete data.users[id];
   saveUsers(data);
   ctx.reply(`🗑️ Usuario ${id} eliminado.`);
 });
 
 bot.command("promover", (ctx) => {
-  if (ctx.from.id.toString() !== data.creator.toString())
-    return ctx.reply("❌ Solo el Creador puede gestionar usuarios.");
-
+  if (!isCreator(ctx)) return deny(ctx);
   const id = ctx.message.text.split(" ")[1];
   if (!id) return ctx.reply("Uso: /promover <id>");
-
   data.users[id] = { role: "admin" };
   saveUsers(data);
   ctx.reply(`⭐ Usuario ${id} promovido a Administrador.`);
@@ -139,82 +90,136 @@ bot.command("promover", (ctx) => {
 });
 
 bot.command("revocar", (ctx) => {
-  if (ctx.from.id.toString() !== data.creator.toString())
-    return ctx.reply("❌ Solo el Creador puede gestionar usuarios.");
-
+  if (!isCreator(ctx)) return deny(ctx);
   const id = ctx.message.text.split(" ")[1];
   if (!id) return ctx.reply("Uso: /revocar <id>");
-
   data.users[id] = { role: "approved" };
   saveUsers(data);
   ctx.reply(`🔄 Usuario ${id} ya no es Administrador.`);
   bot.telegram.sendMessage(id, "🔄 Se revocó tu rol de Administrador.");
 });
 
-// ------------------ Menú de comandos sugeridos ------------------ //
+bot.command("listar", (ctx) => {
+  if (!isCreator(ctx)) return deny(ctx);
+  let mensaje = "📋 Lista de usuarios:\n\n";
+  Object.entries(data.users).forEach(([id, info]) => {
+    mensaje += `👤 ID: ${id} → Rol: ${info.role}\n`;
+  });
+  ctx.reply(mensaje);
+});
+
+// ------------------ Consultar usuario por documento ------------------ //
+bot.command("usuario", async (ctx) => {
+  if (!isAdmin(ctx)) return deny(ctx);
+  const documento = ctx.message.text.split(" ")[1];
+  if (!documento) return ctx.reply("Uso: /usuario <documento>");
+
+  try {
+    const sql = `
+      SELECT u.id, u.email, u.documento, u.first_name, u.last_name, u.active,
+             u.creation_date, u.update_date, ac.last_login
+      FROM sigha."user" u
+      LEFT JOIN sigha.access_control ac ON ac.id_user = u.id
+      WHERE u.documento = $1
+      ORDER BY ac.last_login DESC
+      LIMIT 1;
+    `;
+    const res = await query(sql, [documento]);
+    if (!res.rows.length) return ctx.reply("📭 No se encontró.");
+    const u = res.rows[0];
+    return ctx.reply(`👤 Usuario:
+- Documento: ${u.documento}
+- Nombre: ${u.first_name ?? ""} ${u.last_name ?? ""}
+- Email: ${u.email ?? "(sin email)"}
+- Activo: ${u.active ? "✅" : "❌"}
+- Última sesión: ${u.last_login ?? "❌ Nunca"}`);
+  } catch (e) {
+    return ctx.reply(`❌ Error: ${e.message}`);
+  }
+});
+
+// ------------------ Consultar áreas y asignaturas ------------------ //
+bot.command("areas", async (ctx) => {
+  if (!isAdmin(ctx)) return deny(ctx);
+
+  try {
+    const sql = `
+      SELECT a.id   AS area_id,
+             a.description AS area,
+             s.codigo,
+             s.name AS asignatura
+      FROM sigha.area a
+      LEFT JOIN sigha.subject s ON s.id_area = a.id
+      ORDER BY a.description, s.name;
+    `;
+    const res = await query(sql);
+
+    if (!res.rows.length) {
+      return ctx.reply("📭 No se encontraron áreas ni asignaturas.");
+    }
+
+    // Agrupamos por área
+    const grouped = {};
+    res.rows.forEach((row) => {
+      if (!grouped[row.area]) grouped[row.area] = [];
+      if (row.asignatura) {
+        grouped[row.area].push(`${row.codigo}: ${row.asignatura}`);
+      }
+    });
+
+    // Construimos el mensaje
+    let mensaje = "📚 Áreas y asignaturas:\n\n";
+    Object.entries(grouped).forEach(([area, asignaturas]) => {
+      mensaje += `🔹 ${area}\n`;
+      if (asignaturas.length > 0) {
+        asignaturas.forEach((asig) => (mensaje += `   - ${asig}\n`));
+      } else {
+        mensaje += "   (sin asignaturas)\n";
+      }
+      mensaje += "\n";
+    });
+
+    return ctx.reply(mensaje);
+  } catch (e) {
+    console.error("/areas error", e);
+    return ctx.reply(`❌ Error al consultar áreas: ${e.message}`);
+  }
+});
+
+// ------------------ DB & Test ------------------ //
+bot.command("db", async (ctx) => {
+  if (!isAdmin(ctx)) return deny(ctx);
+  const ok = await healthcheck();
+  if (!ok) return ctx.reply("❌ DB no respondió.");
+  return ctx.reply("✅ DB OK");
+});
+
+bot.command("test", async (ctx) => {
+  if (!isCreator(ctx)) return deny(ctx);
+  const res = await query(
+    `SELECT documento FROM sigha."user" ORDER BY creation_date DESC LIMIT 10`
+  );
+  if (!res.rows.length) return ctx.reply("📭 Sin resultados.");
+  return ctx.reply(res.rows.map((r, i) => `${i + 1}. ${r.documento}`).join("\n"));
+});
+
+// ------------------ Menú comandos ------------------ //
 bot.telegram.setMyCommands([
-  { command: "start", description: "Iniciar y ver tu ID y rol" },
-  { command: "aprobar", description: "Aprobar usuario (solo Creador)" },
-  { command: "bloquear", description: "Bloquear usuario (solo Creador)" },
-  { command: "eliminar", description: "Eliminar usuario (solo Creador)" },
-  { command: "promover", description: "Promover a administrador (solo Creador)" },
-  { command: "revocar", description: "Revocar rol de administrador (solo Creador)" },
-  { command: "listar", description: "Listar usuarios y sus roles (solo Creador)" },
-  { command: "test", description: "Consultar 10 documentos (solo Creador)" }
+  { command: "start", description: "Iniciar y ver tu rol" },
+  { command: "aprobar", description: "Aprobar usuario (Creador)" },
+  { command: "bloquear", description: "Bloquear usuario (Creador)" },
+  { command: "eliminar", description: "Eliminar usuario (Creador)" },
+  { command: "promover", description: "Promover a admin (Creador)" },
+  { command: "revocar", description: "Revocar admin (Creador)" },
+  { command: "listar", description: "Listar usuarios (Creador)" },
+  { command: "usuario", description: "Consultar usuario por documento" },
+  { command: "areas", description: "Listar áreas y sus asignaturas" },
+  { command: "db", description: "Probar conexión DB" },
+  { command: "test", description: "Últimos 10 documentos (Creador)" },
 ]);
 
 // ------------------ Inicio ------------------ //
 bot.catch((err) => console.error("Bot error:", err));
 bot.launch().then(() =>
-  console.log("✅ Bot de Telegram con roles corriendo con menú de comandos sugeridos...")
+  console.log("✅ Bot SIGHA corriendo con comandos de gestión y áreas/asignaturas...")
 );
-// ------------------ DB Health (para pruebas) ------------------ //
-bot.command("db", async (ctx) => {
-  try {
-    const ok = await healthcheck();
-    if (!ok) return ctx.reply("❌ DB no respondió correctamente");
-    const result = await query("SELECT now() as ts");
-    return ctx.reply(`✅ DB OK. now(): ${result.rows[0].ts}`);
-  } catch (e) {
-    console.error("DB error", e);
-    return ctx.reply(`❌ Error DB: ${e.message}`);
-  }
-});
-// ------------------ Listar usuarios (solo Creador) ------------------ //
-bot.command("listar", (ctx) => {
-  if (ctx.from.id.toString() !== data.creator.toString()) {
-    return ctx.reply("❌ Solo el Creador puede listar usuarios.");
-  }
-
-  const usuarios = Object.entries(data.users);
-
-  if (usuarios.length === 0) {
-    return ctx.reply("📭 No hay usuarios registrados todavía.");
-  }
-
-  let mensaje = "📋 Lista de usuarios:\n\n";
-  usuarios.forEach(([id, info]) => {
-    mensaje += `👤 ID: ${id} → Rol: ${info.role}\n`;
-  });
-
-  ctx.reply(mensaje);
-});
-
-// ------------------ Test consulta DB (solo Creador) ------------------ //
-bot.command("test", async (ctx) => {
-  if (ctx.from.id.toString() !== data.creator.toString()) {
-    return ctx.reply("❌ Solo el Creador puede ejecutar este comando.");
-  }
-  try {
-    const sql =
-      "SELECT documento FROM users ORDER BY creation_date DESC NULLS LAST LIMIT 10";
-    const res = await query(sql);
-    if (!res.rows.length) return ctx.reply("📭 Sin resultados.");
-    const lista = res.rows.map((r, i) => `${i + 1}. ${r.documento ?? "(null)"}`).join("\n");
-    return ctx.reply(`🧪 Últimos 10 documentos:\n${lista}`);
-  } catch (e) {
-    console.error("/test error", e);
-    return ctx.reply(`❌ Error en consulta: ${e.message}`);
-  }
-});
-
