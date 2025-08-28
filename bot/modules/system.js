@@ -11,3 +11,8 @@ export function registerSystemCommands(bot) {
     return ctx.reply("✅ DB OK");
   });
 }
+
+// 👉 export de comandos para el menú
+export const systemCommands = [
+  { command: "db", description: "Probar conexión DB" }
+];
