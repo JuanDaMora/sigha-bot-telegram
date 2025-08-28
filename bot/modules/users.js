@@ -46,7 +46,7 @@ export function registerUserCommands(bot, data) {
   });
 
   // ------------------ Gestión de usuarios ------------------ //
-  bot.command("aprobar", (ctx) => { /* ... igual que antes */ });
+  bot.command("aprobar", (ctx) => { /* ... */ });
   bot.command("bloquear", (ctx) => { /* ... */ });
   bot.command("eliminar", (ctx) => { /* ... */ });
   bot.command("promover", (ctx) => { /* ... */ });
@@ -56,3 +56,15 @@ export function registerUserCommands(bot, data) {
   // ------------------ Consultar usuario por documento ------------------ //
   bot.command("usuario", async (ctx) => { /* ... */ });
 }
+
+// 👉 export de comandos para el menú
+export const userCommands = [
+  { command: "start", description: "Iniciar y ver tu rol" },
+  { command: "aprobar", description: "Aprobar usuario (Creador)" },
+  { command: "bloquear", description: "Bloquear usuario (Creador)" },
+  { command: "eliminar", description: "Eliminar usuario (Creador)" },
+  { command: "promover", description: "Promover a admin (Creador)" },
+  { command: "revocar", description: "Revocar admin (Creador)" },
+  { command: "listar", description: "Listar usuarios (Creador)" },
+  { command: "usuario", description: "Consultar usuario por documento" }
+];
