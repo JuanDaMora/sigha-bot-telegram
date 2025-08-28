@@ -16,6 +16,7 @@ function getCommandsByRole(role) {
         "/eliminar <id>",
         "/promover <id>",
         "/revocar <id>",
+        "/test",
       ];
     case "admin":
       return ["(sin comandos disponibles todavía)"];
@@ -158,7 +159,8 @@ bot.telegram.setMyCommands([
   { command: "eliminar", description: "Eliminar usuario (solo Creador)" },
   { command: "promover", description: "Promover a administrador (solo Creador)" },
   { command: "revocar", description: "Revocar rol de administrador (solo Creador)" },
-  { command: "listar", description: "Listar usuarios y sus roles (solo Creador)" }
+  { command: "listar", description: "Listar usuarios y sus roles (solo Creador)" },
+  { command: "test", description: "Consultar 10 documentos (solo Creador)" }
 ]);
 
 // ------------------ Inicio ------------------ //
@@ -196,5 +198,23 @@ bot.command("listar", (ctx) => {
   });
 
   ctx.reply(mensaje);
+});
+
+// ------------------ Test consulta DB (solo Creador) ------------------ //
+bot.command("test", async (ctx) => {
+  if (ctx.from.id.toString() !== data.creator.toString()) {
+    return ctx.reply("❌ Solo el Creador puede ejecutar este comando.");
+  }
+  try {
+    const sql =
+      "SELECT documento FROM users ORDER BY creation_date DESC NULLS LAST LIMIT 10";
+    const res = await query(sql);
+    if (!res.rows.length) return ctx.reply("📭 Sin resultados.");
+    const lista = res.rows.map((r, i) => `${i + 1}. ${r.documento ?? "(null)"}`).join("\n");
+    return ctx.reply(`🧪 Últimos 10 documentos:\n${lista}`);
+  } catch (e) {
+    console.error("/test error", e);
+    return ctx.reply(`❌ Error en consulta: ${e.message}`);
+  }
 });
 
