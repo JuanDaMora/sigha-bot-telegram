@@ -25,7 +25,7 @@ export function registerAcademicCommands(bot) {
   });
 }
 
-// 👉 este es el que faltaba exportar
+// 👉 este export sí es válido
 export const academicCommands = [
   { command: "areas", description: "Listar áreas y asignaturas" },
   { command: "semestres", description: "Ver semestres con resumen" },
