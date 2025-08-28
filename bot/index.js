@@ -1,8 +1,10 @@
 import { Telegraf } from "telegraf";
 import { loadUsers, saveUsers, getRoleName } from "./userStore.js";
+import { healthcheck, query } from "./db.js";
 
 const bot = new Telegraf(process.env.TELEGRAM_TOKEN);
 let data = loadUsers();
+const backendUrl = process.env.BACKEND_URL;
 
 // ------------------ Comandos por rol ------------------ //
 function getCommandsByRole(role) {
@@ -164,6 +166,18 @@ bot.catch((err) => console.error("Bot error:", err));
 bot.launch().then(() =>
   console.log("✅ Bot de Telegram con roles corriendo con menú de comandos sugeridos...")
 );
+// ------------------ DB Health (para pruebas) ------------------ //
+bot.command("db", async (ctx) => {
+  try {
+    const ok = await healthcheck();
+    if (!ok) return ctx.reply("❌ DB no respondió correctamente");
+    const result = await query("SELECT now() as ts");
+    return ctx.reply(`✅ DB OK. now(): ${result.rows[0].ts}`);
+  } catch (e) {
+    console.error("DB error", e);
+    return ctx.reply(`❌ Error DB: ${e.message}`);
+  }
+});
 // ------------------ Listar usuarios (solo Creador) ------------------ //
 bot.command("listar", (ctx) => {
   if (ctx.from.id.toString() !== data.creator.toString()) {
