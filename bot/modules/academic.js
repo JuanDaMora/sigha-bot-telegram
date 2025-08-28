@@ -6,13 +6,28 @@ export function registerAcademicCommands(bot) {
   }
 
   // /areas
-  bot.command("areas", async (ctx) => { /* ... */ });
+  bot.command("areas", async (ctx) => {
+    // ... tu lógica actual ...
+  });
 
   // /semestres
-  bot.command("semestres", async (ctx) => { /* ... */ });
+  bot.command("semestres", async (ctx) => {
+    // ... tu lógica actual ...
+  });
 
   // /grupos_sin_docente + callback
-  bot.command("grupos_sin_docente", async (ctx) => { /* ... */ });
+  bot.command("grupos_sin_docente", async (ctx) => {
+    // ... tu lógica actual ...
+  });
 
-  bot.on("callback_query", async (ctx) => { /* ... */ });
+  bot.on("callback_query", async (ctx) => {
+    // ... tu lógica actual ...
+  });
 }
+
+// 👉 este es el que faltaba exportar
+export const academicCommands = [
+  { command: "areas", description: "Listar áreas y asignaturas" },
+  { command: "semestres", description: "Ver semestres con resumen" },
+  { command: "grupos_sin_docente", description: "Grupos sin docente (elige semestre)" }
+];
